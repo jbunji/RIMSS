@@ -336,7 +336,7 @@ const CAT_LABORS = ['1', '3', '6'];
 const WHEN_DISCS = ['D', 'F', 'A', 'W'];
 const METER_ACTIONS = ['INSTALL', 'REMOVE', 'READ', 'RESET'];
 const PMI_TYPES = ['30-DAY', '120-1', '180-DAY', '360L'];
-const SORTIE_EFFECTS = ['EFFECTIVE', 'NON-EFFECTIVE', 'PARTIAL'];
+const SORTIE_EFFECTS = ['EFFECTIVE', 'NON-EFF', 'PARTIAL'];
 const EVENT_TYPES = ['CORRECTIVE', 'PREVENTIVE', 'INSPECTION'];
 const DISCREPANCIES = [
   'Unit failed BIT test during ground operations',
@@ -382,7 +382,9 @@ async function main() {
     'location', 'users', 'program', 'adm_variable',
   ];
   for (const t of tables) {
-    await prisma.$executeRawUnsafe(`TRUNCATE TABLE "${t}" CASCADE`);
+    try {
+      await prisma.$executeRawUnsafe(`TRUNCATE TABLE "${t}" CASCADE`);
+    } catch { /* table may not exist */ }
   }
 
   // Reset sequences
