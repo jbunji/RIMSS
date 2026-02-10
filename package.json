@@ -29,8 +29,11 @@
   },
   "packageManager": "pnpm@8.15.6",
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.6.2",
     "csv-parse": "^6.1.0",
+    "oracledb": "^6.10.0",
+    "pg": "^8.18.0",
     "xlsx": "^0.18.5"
   }
 }

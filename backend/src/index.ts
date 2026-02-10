@@ -17231,8 +17231,8 @@ app.post('/api/sorties/bulk-import', (req, res) => {
   });
 });
 
-// GET /api/spares - List spare parts inventory (assets not in config) for a program
-app.get('/api/spares', (req, res) => {
+// GET /api/spares - List spare parts inventory (assets) for a program - REAL DATABASE
+app.get('/api/spares', async (req, res) => {
   const payload = authenticateRequest(req, res);
   if (!payload) return;
 
@@ -17258,153 +17258,108 @@ app.get('/api/spares', (req, res) => {
     return res.status(403).json({ error: 'Access denied to this program' });
   }
 
-  // Get spare assets (active assets without cfg_set_id, typically at depot locations)
-  const allAssets = detailedAssets;
+  try {
+    // Get pagination params
+    const page = parseInt(req.query.page as string, 10) || 1;
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 25, 100);
+    const offset = (page - 1) * limit;
 
-  // Get user's location IDs for authorization check
-  const userLocationIds = user.locations?.map(loc => loc.loc_id) || [];
+    // Build where clause - spares are assets belonging to the program via part.pgm_id
+    const whereClause: Prisma.AssetWhereInput = {
+      active: req.query.show_deleted === 'true' ? false : true,
+      part: {
+        pgm_id: programIdFilter,
+      },
+    };
 
-  // Get location filter from query string (optional)
-  let locationIdFilter = req.query.location_id ? parseInt(req.query.location_id as string, 10) : null;
+    // Apply location filter if specified
+    const locationIdFilter = req.query.location_id ? parseInt(req.query.location_id as string, 10) : null;
+    if (locationIdFilter) {
+      whereClause.OR = [
+        { loc_ida: locationIdFilter },
+        { loc_idc: locationIdFilter },
+      ];
+    }
 
-  // If location specified, verify user has access to it
-  if (locationIdFilter && userLocationIds.length > 0 && !userLocationIds.includes(locationIdFilter)) {
-    return res.status(403).json({ error: 'Access denied to this location' });
-  }
+    // Apply status filter
+    const statusFilter = req.query.status as string;
+    if (statusFilter) {
+      whereClause.status_cd = statusFilter;
+    }
 
-  // Check if we should show deleted/inactive spares
-  const showDeleted = req.query.show_deleted === 'true';
+    // Apply search filter
+    const searchQuery = (req.query.search as string)?.trim() || null;
+    if (searchQuery) {
+      whereClause.OR = [
+        { serno: { contains: searchQuery, mode: 'insensitive' } },
+        { part: { partno: { contains: searchQuery, mode: 'insensitive' } } },
+        { part: { noun: { contains: searchQuery, mode: 'insensitive' } } },
+      ];
+    }
 
-  // Filter by program and "spare" status (not assigned to configuration)
-  // Spares are typically assets at depot with no configuration assignment
-  let filteredSpares = allAssets.filter(asset =>
-    asset.pgm_id === programIdFilter &&
-    (showDeleted ? asset.active === false : asset.active === true) &&
-    asset.loc_type === 'depot' // Spares are typically at depot
-  );
+    // Get total count
+    const total = await prisma.asset.count({ where: whereClause });
 
-  // SECURITY: Filter by location - spares must have Assigned Base (loc_ida) OR Current Base (loc_idc) matching user's authorized locations
-  // If a specific location is requested, filter by that location
-  // If no location specified and user has location restrictions, show spares from all their locations
-  if (locationIdFilter) {
-    // Filter by the specific requested location
-    filteredSpares = filteredSpares.filter(spare => {
-      // Spare is visible if EITHER loc_ida OR loc_idc matches the requested location
-      const matchesAssignedBase = spare.loc_ida === locationIdFilter;
-      const matchesCurrentBase = spare.loc_idc === locationIdFilter;
-      return matchesAssignedBase || matchesCurrentBase;
+    // Build orderBy
+    const sortBy = (req.query.sort_by as string) || 'serno';
+    const sortOrder = (req.query.sort_order as string) === 'desc' ? 'desc' : 'asc';
+    let orderBy: any = { serno: sortOrder };
+    if (sortBy === 'partno') orderBy = { part: { partno: sortOrder } };
+    else if (sortBy === 'status_cd') orderBy = { status_cd: sortOrder };
+
+    // Query real assets from database
+    const assets = await prisma.asset.findMany({
+      where: whereClause,
+      include: {
+        part: true,
+        assignedLocation: true,
+        currentLocation: true,
+      },
+      orderBy,
+      skip: offset,
+      take: limit,
     });
-  } else if (userLocationIds.length > 0) {
-    // No specific location requested - filter by all user's locations
-    filteredSpares = filteredSpares.filter(spare => {
-      // Spare is visible if EITHER loc_ida OR loc_idc matches any of the user's locations
-      const matchesAssignedBase = spare.loc_ida !== null && userLocationIds.includes(spare.loc_ida);
-      const matchesCurrentBase = spare.loc_idc !== null && userLocationIds.includes(spare.loc_idc);
-      return matchesAssignedBase || matchesCurrentBase;
+
+    // Transform to expected format
+    const spares = assets.map(asset => ({
+      asset_id: asset.asset_id,
+      serno: asset.serno || '',
+      partno: asset.part?.partno || '',
+      part_name: asset.part?.noun || '',
+      nsn: asset.part?.nsn || '',
+      status_cd: asset.status_cd || 'FMC',
+      loc_ida: asset.loc_ida,
+      loc_idc: asset.loc_idc,
+      location: asset.currentLocation?.display_name || asset.assignedLocation?.display_name || 'Unknown',
+      assigned_location: asset.assignedLocation?.display_name || '',
+      current_location: asset.currentLocation?.display_name || '',
+      active: asset.active,
+      pgm_id: asset.part?.pgm_id || programIdFilter,
+    }));
+
+    // Get program info
+    const program = await prisma.program.findUnique({ where: { pgm_id: programIdFilter } });
+
+    console.log(`[SPARES] List request by ${user.username} - Program: ${program?.pgm_cd}, Total: ${total}, Page: ${page}`);
+
+    res.json({
+      spares,
+      pagination: {
+        page,
+        limit,
+        total,
+        total_pages: Math.ceil(total / limit),
+      },
+      program: {
+        pgm_id: programIdFilter,
+        pgm_cd: program?.pgm_cd || 'UNKNOWN',
+        pgm_name: program?.pgm_name || 'Unknown Program',
+      },
     });
+  } catch (error) {
+    console.error('[SPARES] Error fetching spares:', error);
+    res.status(500).json({ error: 'Failed to fetch spares' });
   }
-
-  // Apply optional status filter
-  const statusFilter = req.query.status as string;
-  if (statusFilter) {
-    filteredSpares = filteredSpares.filter(spare => spare.status_cd === statusFilter);
-  }
-
-  // Apply optional location filter
-  const locationFilter = req.query.location as string;
-  if (locationFilter) {
-    filteredSpares = filteredSpares.filter(spare =>
-      spare.location.toLowerCase().includes(locationFilter.toLowerCase())
-    );
-  }
-
-  // Apply optional search filter (searches serno, partno, part_name)
-  const searchQuery = (req.query.search as string)?.toLowerCase().trim() || null;
-  if (searchQuery) {
-    filteredSpares = filteredSpares.filter(spare =>
-      spare.serno.toLowerCase().includes(searchQuery) ||
-      spare.partno.toLowerCase().includes(searchQuery) ||
-      spare.part_name.toLowerCase().includes(searchQuery)
-    );
-  }
-
-  // Apply sorting
-  const sortBy = (req.query.sort_by as string) || 'partno';
-  const sortOrder = (req.query.sort_order as string) || 'asc';
-
-  // Valid sort columns
-  const validSortColumns = ['serno', 'partno', 'part_name', 'status_cd', 'location'];
-  if (validSortColumns.includes(sortBy)) {
-    filteredSpares.sort((a: AssetDetails, b: AssetDetails) => {
-      let aVal: string | number | null = null;
-      let bVal: string | number | null = null;
-
-      switch (sortBy) {
-        case 'serno':
-          aVal = a.serno.toLowerCase();
-          bVal = b.serno.toLowerCase();
-          break;
-        case 'partno':
-          aVal = a.partno.toLowerCase();
-          bVal = b.partno.toLowerCase();
-          break;
-        case 'part_name':
-          aVal = a.part_name.toLowerCase();
-          bVal = b.part_name.toLowerCase();
-          break;
-        case 'status_cd':
-          aVal = a.status_cd;
-          bVal = b.status_cd;
-          break;
-        case 'location':
-          aVal = a.location.toLowerCase();
-          bVal = b.location.toLowerCase();
-          break;
-      }
-
-      if (aVal === null || bVal === null) return 0;
-
-      let comparison = 0;
-      if (typeof aVal === 'string' && typeof bVal === 'string') {
-        comparison = aVal.localeCompare(bVal);
-      } else if (typeof aVal === 'number' && typeof bVal === 'number') {
-        comparison = aVal - bVal;
-      }
-
-      return sortOrder === 'desc' ? -comparison : comparison;
-    });
-  }
-
-  // Get pagination params
-  const page = parseInt(req.query.page as string, 10) || 1;
-  const limit = Math.min(parseInt(req.query.limit as string, 10) || 25, 100);
-  const offset = (page - 1) * limit;
-
-  // Calculate total before pagination
-  const total = filteredSpares.length;
-
-  // Apply pagination
-  const paginatedSpares = filteredSpares.slice(offset, offset + limit);
-
-  // Get program info
-  const program = allPrograms.find(p => p.pgm_id === programIdFilter);
-
-  console.log(`[SPARES] List request by ${user.username} - Program: ${program?.pgm_cd}, Total: ${total}, Page: ${page}`);
-
-  res.json({
-    spares: paginatedSpares,
-    pagination: {
-      page,
-      limit,
-      total,
-      total_pages: Math.ceil(total / limit),
-    },
-    program: {
-      pgm_id: programIdFilter,
-      pgm_cd: program?.pgm_cd || 'UNKNOWN',
-      pgm_name: program?.pgm_name || 'Unknown Program',
-    },
-  });
 });
 
 // POST /api/spares - Create a new spare part record
