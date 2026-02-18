@@ -17020,7 +17020,7 @@ app.post('/api/sorties', async (req, res) => {
         mission_id: mission_id || null,
         serno: assetSerno,
         ac_tailno: ac_tailno || null,
-        sortie_date: sortie_date ? new Date(sortie_date) : new Date(),
+        sortie_date: sortie_date ? new Date(sortie_date + 'T12:00:00Z') : new Date(),
         sortie_effect: sortie_effect || null,
         ac_station: ac_station || null,
         ac_type: ac_type || null,
@@ -17082,7 +17082,7 @@ app.put('/api/sorties/:id', async (req, res) => {
       where: { sortie_id: sortieId },
       data: {
         ...(mission_id !== undefined && { mission_id }),
-        ...(sortie_date !== undefined && { sortie_date: new Date(sortie_date) }),
+        ...(sortie_date !== undefined && { sortie_date: new Date(sortie_date + 'T12:00:00Z') }),
         ...(sortie_effect !== undefined && { sortie_effect }),
         ...(range !== undefined && { range }),
         ...(remarks !== undefined && { remarks }),
@@ -17261,7 +17261,7 @@ app.post('/api/sorties/bulk-import', async (req, res) => {
           const updatedSortie = await prisma.sortie.update({
             where: { sortie_id: existingSortie.sortie_id },
             data: {
-              sortie_date: new Date(sortieData.sortie_date),
+              sortie_date: new Date(sortieData.sortie_date + 'T12:00:00Z'),
               sortie_effect: sortieData.sortie_effect || existingSortie.sortie_effect,
               range: sortieData.range || existingSortie.range,
               remarks: sortieData.remarks || existingSortie.remarks,
@@ -17283,7 +17283,7 @@ app.post('/api/sorties/bulk-import', async (req, res) => {
           mission_id: missionId,
           serno: asset.serno || sortieData.serno,
           ac_tailno: sortieData.ac_tailno || null,
-          sortie_date: new Date(sortieData.sortie_date),
+          sortie_date: new Date(sortieData.sortie_date + 'T12:00:00Z'),
           sortie_effect: sortieData.sortie_effect || null,
           range: sortieData.range || null,
           remarks: sortieData.remarks || null,
