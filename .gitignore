@@ -55,3 +55,4 @@ features.db
 # Playwright
 playwright-report/
 test-results/
+.backup_sortie_fix

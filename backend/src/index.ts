@@ -16766,7 +16766,8 @@ app.delete('/api/configurations/:id/bom/:itemId', async (req, res) => {
 // ============================================
 
 // List sorties (requires authentication)
-app.get('/api/sorties', (req, res) => {
+// GET /api/sorties - List sorties for a program - REAL DATABASE
+app.get('/api/sorties', async (req, res) => {
   const payload = authenticateRequest(req, res);
   if (!payload) return;
 
@@ -16775,85 +16776,150 @@ app.get('/api/sorties', (req, res) => {
     return res.status(401).json({ error: 'User not found' });
   }
 
-  // Get user's program IDs and location IDs
-  const userProgramIds = user.programs.map(p => p.pgm_id);
-  const userLocationIds = user.locations?.map(loc => loc.loc_id) || [];
+  try {
+    const userProgramIds = user.programs.map(p => p.pgm_id);
+    const programIdFilter = req.query.program_id ? parseInt(req.query.program_id as string, 10) : null;
+    const searchQuery = req.query.search ? String(req.query.search).toLowerCase().trim() : null;
+    const startDate = req.query.start_date ? String(req.query.start_date) : null;
+    const endDate = req.query.end_date ? String(req.query.end_date) : null;
+    const tailNumber = req.query.tail_number ? String(req.query.tail_number).toLowerCase() : null;
+    const sortieEffect = req.query.sortie_effect ? String(req.query.sortie_effect) : null;
 
-  // Get query parameters
-  const programIdFilter = req.query.program_id ? parseInt(req.query.program_id as string, 10) : null;
-  const searchQuery = req.query.search ? String(req.query.search).toLowerCase().trim() || null : null;
-  const startDate = req.query.start_date ? String(req.query.start_date) : null;
-  const endDate = req.query.end_date ? String(req.query.end_date) : null;
-  const tailNumber = req.query.tail_number ? String(req.query.tail_number).toLowerCase() : null;
-  const sortieEffect = req.query.sortie_effect ? String(req.query.sortie_effect) : null;
+    // Build Prisma where clause
+    const where: any = {
+      pgm_id: { in: userProgramIds },
+    };
 
-  // Filter by user's accessible programs
-  let filteredSorties = sorties.filter(s => userProgramIds.includes(s.pgm_id));
+    if (programIdFilter && userProgramIds.includes(programIdFilter)) {
+      where.pgm_id = programIdFilter;
+    }
 
-  // Apply location filtering for non-admin users
-  // Sorties are filtered based on the asset's location
-  if (user.role !== 'ADMIN' && userLocationIds.length > 0) {
-    filteredSorties = filteredSorties.filter(s => {
-      const asset = detailedAssets.find(a => a.asset_id === s.asset_id);
-      if (!asset) return false;
-      return userLocationIds.includes(asset.loc_ida) || userLocationIds.includes(asset.loc_idc);
+    if (searchQuery) {
+      where.OR = [
+        { mission_id: { contains: searchQuery, mode: 'insensitive' } },
+        { serno: { contains: searchQuery, mode: 'insensitive' } },
+        { ac_tailno: { contains: searchQuery, mode: 'insensitive' } },
+      ];
+    }
+
+    if (startDate || endDate) {
+      where.sortie_date = {};
+      if (startDate) where.sortie_date.gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setUTCHours(23, 59, 59, 999);
+        where.sortie_date.lte = end;
+      }
+    }
+
+    if (tailNumber) {
+      where.ac_tailno = { contains: tailNumber, mode: 'insensitive' };
+    }
+
+    if (sortieEffect) {
+      where.sortie_effect = sortieEffect;
+    }
+
+    const [dbSorties, total] = await Promise.all([
+      prisma.sortie.findMany({
+        where,
+        include: {
+          asset: { include: { part: true } },
+          program: true,
+        },
+        orderBy: { sortie_date: 'desc' },
+        take: 200,
+      }),
+      prisma.sortie.count({ where }),
+    ]);
+
+    // Map to V1 response shape
+    const sorties = dbSorties.map(s => ({
+      sortie_id: s.sortie_id,
+      pgm_id: s.pgm_id,
+      asset_id: s.asset_id,
+      mission_id: s.mission_id || `SRT-${s.sortie_id}`,
+      serno: s.serno || s.asset?.serno || '',
+      ac_tailno: s.ac_tailno || null,
+      sortie_date: s.sortie_date?.toISOString() || new Date().toISOString(),
+      sortie_effect: s.sortie_effect || null,
+      current_unit: s.current_unit || null,
+      assigned_unit: s.assigned_unit || null,
+      range: s.range || null,
+      reason: s.reason || null,
+      remarks: s.remarks || null,
+      ac_type: s.ac_type || null,
+      ac_station: s.ac_station || null,
+      is_non_podded: s.is_non_podded,
+      is_debrief: s.is_debrief,
+      is_live_monitor: s.is_live_monitor,
+      valid: s.valid,
+      val_by: s.val_by,
+      val_date: s.val_date?.toISOString() || null,
+    }));
+
+    console.log(`[SORTIES] DB query by ${user.username} - Total: ${total}`);
+    res.json({ sorties, total });
+  } catch (error: any) {
+    console.error('[SORTIES] Error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get single sortie by ID - REAL DATABASE
+app.get('/api/sorties/:id', async (req, res) => {
+  const payload = authenticateRequest(req, res);
+  if (!payload) return;
+
+  try {
+    const sortieId = parseInt(req.params.id);
+    const sortie = await prisma.sortie.findUnique({
+      where: { sortie_id: sortieId },
+      include: {
+        asset: { include: { part: true, currentLocation: true, assignedLocation: true } },
+        program: true,
+        events: { include: { repairs: true } },
+      },
     });
+
+    if (!sortie) {
+      return res.status(404).json({ error: 'Sortie not found' });
+    }
+
+    res.json({
+      sortie_id: sortie.sortie_id,
+      pgm_id: sortie.pgm_id,
+      asset_id: sortie.asset_id,
+      mission_id: sortie.mission_id || `SRT-${sortie.sortie_id}`,
+      serno: sortie.serno || sortie.asset?.serno || '',
+      ac_tailno: sortie.ac_tailno || null,
+      sortie_date: sortie.sortie_date?.toISOString() || new Date().toISOString(),
+      sortie_effect: sortie.sortie_effect || null,
+      current_unit: sortie.current_unit || null,
+      assigned_unit: sortie.assigned_unit || null,
+      range: sortie.range || null,
+      reason: sortie.reason || null,
+      remarks: sortie.remarks || null,
+      ac_type: sortie.ac_type || null,
+      ac_station: sortie.ac_station || null,
+      is_non_podded: sortie.is_non_podded,
+      is_debrief: sortie.is_debrief,
+      is_live_monitor: sortie.is_live_monitor,
+      valid: sortie.valid,
+      val_by: sortie.val_by,
+      val_date: sortie.val_date?.toISOString() || null,
+      asset: sortie.asset,
+      program: sortie.program,
+      events: sortie.events,
+    });
+  } catch (error: any) {
+    console.error('[SORTIES] Error:', error.message);
+    res.status(500).json({ error: error.message });
   }
-
-  // Apply program filter if specified
-  if (programIdFilter && userProgramIds.includes(programIdFilter)) {
-    filteredSorties = filteredSorties.filter(s => s.pgm_id === programIdFilter);
-  }
-
-  // Apply search filter (mission ID, serial number, tail number)
-  if (searchQuery) {
-    filteredSorties = filteredSorties.filter(s =>
-      s.mission_id.toLowerCase().includes(searchQuery) ||
-      s.serno.toLowerCase().includes(searchQuery) ||
-      (s.ac_tailno && s.ac_tailno.toLowerCase().includes(searchQuery))
-    );
-  }
-
-  // Apply date range filter
-  if (startDate) {
-    const startDateTime = new Date(startDate).getTime();
-    filteredSorties = filteredSorties.filter(s => new Date(s.sortie_date).getTime() >= startDateTime);
-  }
-  if (endDate) {
-    // Include the entire end date by filtering for dates <= end date (not < end date)
-    const endDateTime = new Date(endDate);
-    // Set to end of day in UTC (23:59:59.999)
-    endDateTime.setUTCHours(23, 59, 59, 999);
-    filteredSorties = filteredSorties.filter(s => new Date(s.sortie_date).getTime() <= endDateTime.getTime());
-  }
-
-  // Apply tail number filter
-  if (tailNumber) {
-    filteredSorties = filteredSorties.filter(s =>
-      s.ac_tailno && s.ac_tailno.toLowerCase().includes(tailNumber)
-    );
-  }
-
-  // Apply sortie effect filter
-  if (sortieEffect) {
-    filteredSorties = filteredSorties.filter(s =>
-      s.sortie_effect === sortieEffect
-    );
-  }
-
-  // Sort by date descending (newest first)
-  filteredSorties.sort((a, b) => new Date(b.sortie_date).getTime() - new Date(a.sortie_date).getTime());
-
-  console.log(`[SORTIES] List request by ${user.username} - Total: ${filteredSorties.length}`);
-
-  res.json({
-    sorties: filteredSorties,
-    total: filteredSorties.length,
-  });
 });
 
-// Get single sortie by ID
-app.get('/api/sorties/:id', (req, res) => {
+// Create new sortie - REAL DATABASE
+app.post('/api/sorties', async (req, res) => {
   const payload = authenticateRequest(req, res);
   if (!payload) return;
 
@@ -16862,31 +16928,89 @@ app.get('/api/sorties/:id', (req, res) => {
     return res.status(401).json({ error: 'User not found' });
   }
 
-  const sortieId = parseInt(req.params.id, 10);
-  const sortie = sorties.find(s => s.sortie_id === sortieId);
+  try {
+    const { asset_id, mission_id, sortie_date, sortie_effect, range, remarks, ac_tailno, ac_type, ac_station, current_unit, assigned_unit, reason, is_non_podded, is_debrief, is_live_monitor, serno } = req.body;
 
-  if (!sortie) {
-    return res.status(404).json({ error: 'Sortie not found' });
+    // Find the asset to get program info
+    let assetId = asset_id ? parseInt(asset_id) : null;
+    let pgmId = user.programs[0]?.pgm_id || 1;
+    let assetSerno = serno || '';
+
+    if (assetId) {
+      const asset = await prisma.asset.findUnique({
+        where: { asset_id: assetId },
+        include: { part: true },
+      });
+      if (asset) {
+        pgmId = asset.part?.pgm_id || pgmId;
+        assetSerno = asset.serno || assetSerno;
+      }
+    } else if (serno) {
+      // Try to find asset by serial number
+      const asset = await prisma.asset.findFirst({
+        where: { serno, active: true },
+        include: { part: true },
+      });
+      if (asset) {
+        assetId = asset.asset_id;
+        pgmId = asset.part?.pgm_id || pgmId;
+        assetSerno = asset.serno || assetSerno;
+      }
+    }
+
+    const sortie = await prisma.sortie.create({
+      data: {
+        pgm_id: pgmId,
+        asset_id: assetId,
+        mission_id: mission_id || null,
+        serno: assetSerno,
+        ac_tailno: ac_tailno || null,
+        sortie_date: sortie_date ? new Date(sortie_date) : new Date(),
+        sortie_effect: sortie_effect || null,
+        ac_station: ac_station || null,
+        ac_type: ac_type || null,
+        current_unit: current_unit || null,
+        assigned_unit: assigned_unit || null,
+        range: range || null,
+        reason: reason || null,
+        remarks: remarks || null,
+        is_non_podded: is_non_podded === true,
+        is_debrief: is_debrief === true,
+        is_live_monitor: is_live_monitor === true,
+        valid: false,
+        ins_by: user.username,
+        ins_date: new Date(),
+      },
+    });
+
+    console.log(`[SORTIES] Created sortie ${sortie.sortie_id} by ${user.username}`);
+
+    res.status(201).json({
+      message: 'Sortie created',
+      sortie: {
+        sortie_id: sortie.sortie_id,
+        pgm_id: sortie.pgm_id,
+        asset_id: sortie.asset_id,
+        mission_id: sortie.mission_id,
+        serno: sortie.serno,
+        ac_tailno: sortie.ac_tailno,
+        sortie_date: sortie.sortie_date?.toISOString(),
+        sortie_effect: sortie.sortie_effect,
+        current_unit: sortie.current_unit,
+        assigned_unit: sortie.assigned_unit,
+        range: sortie.range,
+        reason: sortie.reason,
+        remarks: sortie.remarks,
+      },
+    });
+  } catch (error: any) {
+    console.error('[SORTIES] Create error:', error.message);
+    res.status(500).json({ error: error.message });
   }
-
-  // Check if user has access to this sortie's program
-  const userProgramIds = user.programs.map(p => p.pgm_id);
-  if (!userProgramIds.includes(sortie.pgm_id)) {
-    return res.status(403).json({ error: 'Access denied to this sortie' });
-  }
-
-  // Get linked maintenance events for this sortie
-  const linkedEvents = maintenanceEvents.filter(e => e.sortie_id === sortieId);
-
-  res.json({
-    sortie,
-    linked_events: linkedEvents,
-    linked_events_count: linkedEvents.length,
-  });
 });
 
-// Create new sortie (requires field_technician or higher)
-app.post('/api/sorties', (req, res) => {
+// Update sortie - REAL DATABASE
+app.put('/api/sorties/:id', async (req, res) => {
   const payload = authenticateRequest(req, res);
   if (!payload) return;
 
@@ -16895,70 +17019,60 @@ app.post('/api/sorties', (req, res) => {
     return res.status(401).json({ error: 'User not found' });
   }
 
-  // Authorization: Only field_technician, depot_manager, and admin can create sorties
-  if (!['FIELD_TECHNICIAN', 'DEPOT_MANAGER', 'ADMIN'].includes(user.role)) {
-    return res.status(403).json({ error: 'Insufficient permissions to create sortie' });
+  try {
+    const sortieId = parseInt(req.params.id);
+    const { mission_id, sortie_date, sortie_effect, range, remarks, ac_tailno, ac_type, ac_station, current_unit, assigned_unit, reason, is_non_podded, is_debrief, is_live_monitor } = req.body;
+
+    const sortie = await prisma.sortie.update({
+      where: { sortie_id: sortieId },
+      data: {
+        ...(mission_id !== undefined && { mission_id }),
+        ...(sortie_date !== undefined && { sortie_date: new Date(sortie_date) }),
+        ...(sortie_effect !== undefined && { sortie_effect }),
+        ...(range !== undefined && { range }),
+        ...(remarks !== undefined && { remarks }),
+        ...(ac_tailno !== undefined && { ac_tailno }),
+        ...(ac_type !== undefined && { ac_type }),
+        ...(ac_station !== undefined && { ac_station }),
+        ...(current_unit !== undefined && { current_unit }),
+        ...(assigned_unit !== undefined && { assigned_unit }),
+        ...(reason !== undefined && { reason }),
+        ...(is_non_podded !== undefined && { is_non_podded }),
+        ...(is_debrief !== undefined && { is_debrief }),
+        ...(is_live_monitor !== undefined && { is_live_monitor }),
+        chg_by: user.username,
+        chg_date: new Date(),
+      },
+    });
+
+    console.log(`[SORTIES] Updated sortie ${sortieId} by ${user.username}`);
+
+    res.json({
+      message: 'Sortie updated',
+      sortie: {
+        sortie_id: sortie.sortie_id,
+        pgm_id: sortie.pgm_id,
+        asset_id: sortie.asset_id,
+        mission_id: sortie.mission_id,
+        serno: sortie.serno,
+        ac_tailno: sortie.ac_tailno,
+        sortie_date: sortie.sortie_date?.toISOString(),
+        sortie_effect: sortie.sortie_effect,
+        current_unit: sortie.current_unit,
+        assigned_unit: sortie.assigned_unit,
+        range: sortie.range,
+        reason: sortie.reason,
+        remarks: sortie.remarks,
+      },
+    });
+  } catch (error: any) {
+    console.error('[SORTIES] Update error:', error.message);
+    res.status(500).json({ error: error.message });
   }
-
-  // Validate required fields
-  const {
-    asset_id,
-    mission_id,
-    sortie_date,
-    sortie_effect,
-    range,
-    remarks
-  } = req.body;
-
-  if (!asset_id || !mission_id || !sortie_date) {
-    return res.status(400).json({ error: 'Missing required fields: asset_id, mission_id, sortie_date' });
-  }
-
-  // Find the asset and validate
-  const asset = mockAssets.find(a => a.asset_id === parseInt(asset_id, 10));
-  if (!asset) {
-    return res.status(400).json({ error: 'Invalid asset_id' });
-  }
-
-  // Check if user has access to this asset's program
-  const userProgramIds = user.programs.map(p => p.pgm_id);
-  if (!userProgramIds.includes(asset.pgm_id)) {
-    return res.status(403).json({ error: 'Access denied to this asset program' });
-  }
-
-  // Generate new sortie ID
-  const newSortieId = sorties.length > 0 ? Math.max(...sorties.map(s => s.sortie_id)) + 1 : 1;
-
-  // Create new sortie
-  const newSortie: Sortie = {
-    sortie_id: newSortieId,
-    pgm_id: asset.pgm_id,
-    asset_id: parseInt(asset_id, 10),
-    mission_id: mission_id.trim(),
-    serno: asset.serno,
-    ac_tailno: asset.serno, // Use serno as tail number
-    sortie_date: sortie_date,
-    sortie_effect: sortie_effect || null,
-    current_unit: user.programs.find(p => p.pgm_id === asset.pgm_id)?.pgm_cd || null,
-    assigned_unit: user.programs.find(p => p.pgm_id === asset.pgm_id)?.pgm_cd || null,
-    range: range || null,
-    reason: null,
-    remarks: remarks || null,
-  };
-
-  // Add to sorties array
-  sorties.push(newSortie);
-
-  console.log(`[SORTIES] Created new sortie #${newSortieId} by ${user.username} for asset ${asset.serno}`);
-
-  res.status(201).json({
-    sortie: newSortie,
-    message: 'Sortie created successfully',
-  });
 });
 
-// PUT /api/sorties/:id - Update existing sortie (requires field_technician or higher)
-app.put('/api/sorties/:id', (req, res) => {
+// Delete sortie - REAL DATABASE
+app.delete('/api/sorties/:id', async (req, res) => {
   const payload = authenticateRequest(req, res);
   if (!payload) return;
 
@@ -16967,104 +17081,30 @@ app.put('/api/sorties/:id', (req, res) => {
     return res.status(401).json({ error: 'User not found' });
   }
 
-  // Authorization: Only field_technician, depot_manager, and admin can edit sorties
-  if (!['FIELD_TECHNICIAN', 'DEPOT_MANAGER', 'ADMIN'].includes(user.role)) {
-    return res.status(403).json({ error: 'Insufficient permissions to edit sortie' });
-  }
-
-  const sortieId = parseInt(req.params.id, 10);
-  const sortieIndex = sorties.findIndex(s => s.sortie_id === sortieId);
-
-  if (sortieIndex === -1) {
-    return res.status(404).json({ error: 'Sortie not found' });
-  }
-
-  const sortie = sorties[sortieIndex];
-
-  // Check if user has access to this sortie's program
-  const userProgramIds = user.programs.map(p => p.pgm_id);
-  if (!userProgramIds.includes(sortie.pgm_id)) {
-    return res.status(403).json({ error: 'Access denied to this sortie program' });
-  }
-
-  // Update fields (allow partial updates)
-  const {
-    mission_id,
-    sortie_date,
-    sortie_effect,
-    range,
-    remarks,
-    reason,
-    current_unit,
-    assigned_unit
-  } = req.body;
-
-  // Update sortie with new values
-  const updatedSortie = {
-    ...sortie,
-    mission_id: mission_id !== undefined ? mission_id.trim() : sortie.mission_id,
-    sortie_date: sortie_date !== undefined ? sortie_date : sortie.sortie_date,
-    sortie_effect: sortie_effect !== undefined ? sortie_effect : sortie.sortie_effect,
-    range: range !== undefined ? range : sortie.range,
-    remarks: remarks !== undefined ? remarks : sortie.remarks,
-    reason: reason !== undefined ? reason : sortie.reason,
-    current_unit: current_unit !== undefined ? current_unit : sortie.current_unit,
-    assigned_unit: assigned_unit !== undefined ? assigned_unit : sortie.assigned_unit,
-  };
-
-  sorties[sortieIndex] = updatedSortie;
-
-  console.log(`[SORTIES] Updated sortie #${sortieId} by ${user.username}`);
-
-  res.status(200).json({
-    sortie: updatedSortie,
-    message: 'Sortie updated successfully',
-  });
-});
-
-// Delete sortie (requires depot_manager or admin)
-app.delete('/api/sorties/:id', (req, res) => {
-  const payload = authenticateRequest(req, res);
-  if (!payload) return;
-
-  const user = mockUsers.find(u => u.user_id === payload.userId);
-  if (!user) {
-    return res.status(401).json({ error: 'User not found' });
-  }
-
-  // Authorization: Only depot_manager and admin can delete sorties
   if (!['DEPOT_MANAGER', 'ADMIN'].includes(user.role)) {
-    return res.status(403).json({ error: 'Insufficient permissions to delete sortie' });
+    return res.status(403).json({ error: 'Insufficient permissions' });
   }
 
-  const sortieId = parseInt(req.params.id, 10);
-  const sortieIndex = sorties.findIndex(s => s.sortie_id === sortieId);
+  try {
+    const sortieId = parseInt(req.params.id);
 
-  if (sortieIndex === -1) {
-    return res.status(404).json({ error: 'Sortie not found' });
+    // Check for linked events
+    const linkedEvents = await prisma.event.count({ where: { sortie_id: sortieId } });
+    if (linkedEvents > 0) {
+      return res.status(400).json({ error: `Cannot delete sortie - linked to ${linkedEvents} maintenance event(s)` });
+    }
+
+    await prisma.sortie.delete({ where: { sortie_id: sortieId } });
+    console.log(`[SORTIES] Deleted sortie ${sortieId} by ${user.username}`);
+    res.json({ message: 'Sortie deleted' });
+  } catch (error: any) {
+    console.error('[SORTIES] Delete error:', error.message);
+    res.status(500).json({ error: error.message });
   }
-
-  const sortie = sorties[sortieIndex];
-
-  // Check if user has access to this sortie's program
-  const userProgramIds = user.programs.map(p => p.pgm_id);
-  if (!userProgramIds.includes(sortie.pgm_id)) {
-    return res.status(403).json({ error: 'Access denied to this sortie' });
-  }
-
-  // Remove the sortie
-  sorties.splice(sortieIndex, 1);
-
-  console.log(`[SORTIES] Deleted sortie #${sortieId} (${sortie.mission_id}) by ${user.username}`);
-
-  res.json({
-    message: 'Sortie deleted successfully',
-    sortie_id: sortieId,
-  });
 });
 
-// Bulk import sorties from Excel (requires depot_manager or admin)
-app.post('/api/sorties/bulk-import', (req, res) => {
+// Bulk import sorties - REAL DATABASE
+app.post('/api/sorties/bulk-import', async (req, res) => {
   const payload = authenticateRequest(req, res);
   if (!payload) return;
 
@@ -17073,7 +17113,6 @@ app.post('/api/sorties/bulk-import', (req, res) => {
     return res.status(401).json({ error: 'User not found' });
   }
 
-  // Authorization: Only depot_manager and admin can bulk import sorties
   if (!['DEPOT_MANAGER', 'ADMIN'].includes(user.role)) {
     return res.status(403).json({ error: 'Insufficient permissions to bulk import sorties' });
   }
@@ -17084,151 +17123,158 @@ app.post('/api/sorties/bulk-import', (req, res) => {
     return res.status(400).json({ error: 'Invalid import data: sorties array is required' });
   }
 
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  const duplicates: any[] = [];
-  const created: Sortie[] = [];
-  const updated: Sortie[] = [];
-  const skipped: string[] = [];
-  const userProgramIds = user.programs.map(p => p.pgm_id);
+  try {
+    const errors: string[] = [];
+    const duplicates: any[] = [];
+    const created: any[] = [];
+    const updated: any[] = [];
+    const skipped: string[] = [];
+    const userProgramIds = user.programs.map(p => p.pgm_id);
 
-  importSorties.forEach((sortieData, index) => {
-    const rowNum = index + 2; // +2 because Excel starts at row 2 (after header)
+    for (let index = 0; index < importSorties.length; index++) {
+      const sortieData = importSorties[index];
+      const rowNum = index + 2;
 
-    // Validate required fields
-    if (!sortieData.serno || !sortieData.mission_id || !sortieData.sortie_date) {
-      errors.push(`Row ${rowNum}: Missing required fields (serno, mission_id, or sortie_date)`);
-      return;
-    }
+      // Validate required fields
+      if (!sortieData.serno || !sortieData.mission_id || !sortieData.sortie_date) {
+        errors.push(`Row ${rowNum}: Missing required fields (serno, mission_id, or sortie_date)`);
+        continue;
+      }
 
-    // Find asset by serial number
-    const asset = mockAssets.find(a => a.serno === sortieData.serno);
-    if (!asset) {
-      errors.push(`Row ${rowNum}: Asset with serial number '${sortieData.serno}' not found`);
-      return;
-    }
+      // Validate date format
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(sortieData.sortie_date)) {
+        errors.push(`Row ${rowNum}: Invalid date format for '${sortieData.sortie_date}' (use YYYY-MM-DD)`);
+        continue;
+      }
 
-    // Check program access
-    if (!userProgramIds.includes(asset.pgm_id)) {
-      errors.push(`Row ${rowNum}: Access denied to asset '${sortieData.serno}' (program mismatch)`);
-      return;
-    }
+      // Find asset by serial number in DB
+      const asset = await prisma.asset.findFirst({
+        where: { serno: sortieData.serno, active: true },
+        include: { part: true },
+      });
 
-    // Validate date format
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(sortieData.sortie_date)) {
-      errors.push(`Row ${rowNum}: Invalid date format for '${sortieData.sortie_date}' (use YYYY-MM-DD)`);
-      return;
-    }
+      if (!asset) {
+        errors.push(`Row ${rowNum}: Asset with serial number '${sortieData.serno}' not found`);
+        continue;
+      }
 
-    // Check for duplicate mission_id (case-insensitive)
-    const missionId = sortieData.mission_id.trim();
-    const existingSortie = sorties.find(s =>
-      s.mission_id.toLowerCase() === missionId.toLowerCase() &&
-      userProgramIds.includes(s.pgm_id)
-    );
+      const pgmId = asset.part?.pgm_id || 1;
+      if (!userProgramIds.includes(pgmId)) {
+        errors.push(`Row ${rowNum}: Access denied to asset '${sortieData.serno}' (program mismatch)`);
+        continue;
+      }
 
-    if (existingSortie) {
-      // Found duplicate - record it for user decision
-      duplicates.push({
-        row: rowNum,
-        mission_id: missionId,
-        serno: sortieData.serno,
-        sortie_date: sortieData.sortie_date,
-        existing: {
-          mission_id: existingSortie.mission_id,
-          serno: existingSortie.serno,
-          sortie_date: existingSortie.sortie_date,
-          sortie_effect: existingSortie.sortie_effect,
-          range: existingSortie.range,
+      // Check for duplicate mission_id in DB
+      const missionId = sortieData.mission_id.trim();
+      const existingSortie = await prisma.sortie.findFirst({
+        where: {
+          mission_id: { equals: missionId, mode: 'insensitive' },
+          pgm_id: { in: userProgramIds },
         },
-        new: {
+      });
+
+      if (existingSortie) {
+        duplicates.push({
+          row: rowNum,
           mission_id: missionId,
           serno: sortieData.serno,
           sortie_date: sortieData.sortie_date,
+          existing: {
+            mission_id: existingSortie.mission_id,
+            serno: existingSortie.serno,
+            sortie_date: existingSortie.sortie_date?.toISOString().split('T')[0],
+            sortie_effect: existingSortie.sortie_effect,
+            range: existingSortie.range,
+          },
+          new: {
+            mission_id: missionId,
+            serno: sortieData.serno,
+            sortie_date: sortieData.sortie_date,
+            sortie_effect: sortieData.sortie_effect || null,
+            range: sortieData.range || null,
+          },
+        });
+
+        if (!duplicateAction) {
+          continue;
+        } else if (duplicateAction === 'skip') {
+          skipped.push(`Row ${rowNum}: Skipped duplicate mission ID '${missionId}'`);
+          continue;
+        } else if (duplicateAction === 'update') {
+          const updatedSortie = await prisma.sortie.update({
+            where: { sortie_id: existingSortie.sortie_id },
+            data: {
+              sortie_date: new Date(sortieData.sortie_date),
+              sortie_effect: sortieData.sortie_effect || existingSortie.sortie_effect,
+              range: sortieData.range || existingSortie.range,
+              remarks: sortieData.remarks || existingSortie.remarks,
+              chg_by: user.username,
+              chg_date: new Date(),
+            },
+          });
+          updated.push(updatedSortie);
+          continue;
+        }
+        // 'create' falls through to create below
+      }
+
+      // Create new sortie in DB
+      const newSortie = await prisma.sortie.create({
+        data: {
+          pgm_id: pgmId,
+          asset_id: asset.asset_id,
+          mission_id: missionId,
+          serno: asset.serno || sortieData.serno,
+          ac_tailno: sortieData.ac_tailno || null,
+          sortie_date: new Date(sortieData.sortie_date),
           sortie_effect: sortieData.sortie_effect || null,
           range: sortieData.range || null,
-        }
+          remarks: sortieData.remarks || null,
+          current_unit: null,
+          assigned_unit: null,
+          is_non_podded: false,
+          is_debrief: false,
+          is_live_monitor: false,
+          valid: false,
+          ins_by: user.username,
+          ins_date: new Date(),
+        },
       });
-
-      // Handle duplicate based on user's choice
-      if (!duplicateAction) {
-        // No action specified - just report duplicates and don't process
-        warnings.push(`Row ${rowNum}: Duplicate mission ID '${missionId}' found`);
-        return;
-      } else if (duplicateAction === 'skip') {
-        // Skip duplicates
-        skipped.push(`Row ${rowNum}: Skipped duplicate mission ID '${missionId}'`);
-        return;
-      } else if (duplicateAction === 'update') {
-        // Update existing sortie
-        existingSortie.sortie_date = sortieData.sortie_date;
-        existingSortie.sortie_effect = sortieData.sortie_effect || existingSortie.sortie_effect;
-        existingSortie.range = sortieData.range || existingSortie.range;
-        existingSortie.remarks = sortieData.remarks || existingSortie.remarks;
-
-        updated.push(existingSortie);
-        console.log(`[SORTIES] Updated existing sortie ${existingSortie.sortie_id} (mission: ${missionId}) from import row ${rowNum}`);
-        return;
-      }
-      // If duplicateAction is 'create', continue to create new sortie below
+      created.push(newSortie);
     }
 
-    // Generate new sortie ID
-    const newSortieId = sorties.length > 0 ? Math.max(...sorties.map(s => s.sortie_id)) + 1 + created.length : 1 + created.length;
+    // If there are duplicates and no action specified, return duplicate info
+    if (duplicates.length > 0 && !duplicateAction) {
+      return res.status(409).json({
+        error: 'Duplicate mission IDs found',
+        duplicates,
+        message: 'Please review duplicates and choose an action: skip, update, or create',
+      });
+    }
 
-    // Create new sortie
-    const newSortie: Sortie = {
-      sortie_id: newSortieId,
-      pgm_id: asset.pgm_id,
-      asset_id: asset.asset_id,
-      mission_id: missionId,
-      serno: asset.serno,
-      ac_tailno: asset.serno,
-      sortie_date: sortieData.sortie_date,
-      sortie_effect: sortieData.sortie_effect || null,
-      current_unit: user.programs.find(p => p.pgm_id === asset.pgm_id)?.pgm_cd || null,
-      assigned_unit: user.programs.find(p => p.pgm_id === asset.pgm_id)?.pgm_cd || null,
-      range: sortieData.range || null,
-      reason: null,
-      remarks: sortieData.remarks || null,
-    };
+    // If there are validation errors, don't import anything
+    if (errors.length > 0) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        errors,
+        imported: 0,
+      });
+    }
 
-    created.push(newSortie);
-  });
+    console.log(`[SORTIES] Bulk imported ${created.length} sortie(s), updated ${updated.length}, skipped ${skipped.length} by ${user.username}`);
 
-  // If there are duplicates and no action specified, return duplicate info
-  if (duplicates.length > 0 && !duplicateAction) {
-    return res.status(409).json({
-      error: 'Duplicate mission IDs found',
-      duplicates,
-      warnings,
-      message: 'Please review duplicates and choose an action: skip, update, or create',
+    res.status(201).json({
+      message: 'Sorties imported successfully',
+      imported: created.length,
+      updated: updated.length,
+      skipped: skipped.length,
+      warnings: skipped,
     });
+  } catch (error: any) {
+    console.error('[SORTIES] Bulk import error:', error.message);
+    res.status(500).json({ error: error.message });
   }
-
-  // If there are validation errors, don't import anything
-  if (errors.length > 0) {
-    return res.status(400).json({
-      error: 'Validation failed',
-      errors,
-      imported: 0,
-    });
-  }
-
-  // Add all created sorties to the array
-  sorties.push(...created);
-
-  console.log(`[SORTIES] Bulk imported ${created.length} sortie(s), updated ${updated.length}, skipped ${skipped.length} by ${user.username}`);
-
-  res.status(201).json({
-    message: 'Sorties imported successfully',
-    imported: created.length,
-    updated: updated.length,
-    skipped: skipped.length,
-    sorties: created,
-    warnings: skipped,
-  });
 });
 
 // GET /api/spares - List spare parts inventory (assets) for a program - REAL DATABASE
