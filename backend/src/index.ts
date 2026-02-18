@@ -16866,6 +16866,61 @@ app.get('/api/sorties', async (req, res) => {
   }
 });
 
+// GET /api/sorties/pending-review - must be before :id route
+app.get('/api/sorties/pending-review', async (req, res) => {
+  const payload = authenticateRequest(req, res);
+  if (!payload) return;
+
+  const user = mockUsers.find(u => u.user_id === payload.userId);
+  if (!user) return res.status(401).json({ error: 'User not found' });
+
+  try {
+    const userProgramIds = user.programs.map(p => p.pgm_id);
+    const programIdFilter = req.query.program_id ? parseInt(req.query.program_id as string, 10) : null;
+
+    const where: any = {
+      pgm_id: programIdFilter && userProgramIds.includes(programIdFilter) ? programIdFilter : { in: userProgramIds },
+      valid: false,
+      OR: [
+        { adjudication_status: null },
+        { adjudication_status: 'PENDING' },
+      ],
+    };
+
+    const [dbSorties, total] = await Promise.all([
+      prisma.sortie.findMany({
+        where,
+        include: { asset: { include: { part: true } }, program: true },
+        orderBy: { ins_date: 'desc' },
+        take: 200,
+      }),
+      prisma.sortie.count({ where }),
+    ]);
+
+    const sorties = dbSorties.map(s => ({
+      sortie_id: s.sortie_id,
+      pgm_id: s.pgm_id,
+      asset_id: s.asset_id,
+      mission_id: s.mission_id || `SRT-${s.sortie_id}`,
+      serno: s.serno || s.asset?.serno || '',
+      ac_tailno: s.ac_tailno || null,
+      sortie_date: s.sortie_date?.toISOString() || new Date().toISOString(),
+      sortie_effect: s.sortie_effect || null,
+      current_unit: s.current_unit || null,
+      range: s.range || null,
+      remarks: s.remarks || null,
+      ac_category: (s as any).ac_category || null,
+      adjudication_status: (s as any).adjudication_status || null,
+      valid: s.valid,
+      is_non_podded: s.is_non_podded,
+    }));
+
+    res.json({ sorties, total });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get single sortie by ID - REAL DATABASE
 app.get('/api/sorties/:id', async (req, res) => {
   const payload = authenticateRequest(req, res);
@@ -17273,6 +17328,81 @@ app.post('/api/sorties/bulk-import', async (req, res) => {
     });
   } catch (error: any) {
     console.error('[SORTIES] Bulk import error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/sorties/:id/validate - Validate/approve a sortie - REAL DATABASE
+app.post('/api/sorties/:id/validate', async (req, res) => {
+  const payload = authenticateRequest(req, res);
+  if (!payload) return;
+
+  const user = mockUsers.find(u => u.user_id === payload.userId);
+  if (!user) return res.status(401).json({ error: 'User not found' });
+
+  if (!['DEPOT_MANAGER', 'ADMIN'].includes(user.role)) {
+    return res.status(403).json({ error: 'Insufficient permissions' });
+  }
+
+  try {
+    const sortieId = parseInt(req.params.id);
+    const sortie = await prisma.sortie.update({
+      where: { sortie_id: sortieId },
+      data: {
+        valid: true,
+        val_by: user.username,
+        val_date: new Date(),
+        adjudication_status: 'APPROVED',
+        adjudication_by: user.username,
+        adjudication_date: new Date(),
+        chg_by: user.username,
+        chg_date: new Date(),
+      },
+    });
+    console.log(`[SORTIES] Validated sortie ${sortieId} by ${user.username}`);
+    res.json({ message: 'Sortie validated', sortie });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/sorties/:id/adjudicate - Adjudicate a sortie (flag/reject/approve) - REAL DATABASE
+app.post('/api/sorties/:id/adjudicate', async (req, res) => {
+  const payload = authenticateRequest(req, res);
+  if (!payload) return;
+
+  const user = mockUsers.find(u => u.user_id === payload.userId);
+  if (!user) return res.status(401).json({ error: 'User not found' });
+
+  if (!['DEPOT_MANAGER', 'ADMIN'].includes(user.role)) {
+    return res.status(403).json({ error: 'Insufficient permissions' });
+  }
+
+  try {
+    const sortieId = parseInt(req.params.id);
+    const { status, notes } = req.body;
+
+    if (!['APPROVED', 'FLAGGED', 'REJECTED', 'DUPLICATE'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status. Use: APPROVED, FLAGGED, REJECTED, DUPLICATE' });
+    }
+
+    const sortie = await prisma.sortie.update({
+      where: { sortie_id: sortieId },
+      data: {
+        adjudication_status: status,
+        adjudication_notes: notes || null,
+        adjudication_by: user.username,
+        adjudication_date: new Date(),
+        valid: status === 'APPROVED',
+        val_by: status === 'APPROVED' ? user.username : null,
+        val_date: status === 'APPROVED' ? new Date() : null,
+        chg_by: user.username,
+        chg_date: new Date(),
+      },
+    });
+    console.log(`[SORTIES] Adjudicated sortie ${sortieId} as ${status} by ${user.username}`);
+    res.json({ message: `Sortie ${status.toLowerCase()}`, sortie });
+  } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });

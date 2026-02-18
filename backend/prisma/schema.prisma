@@ -584,6 +584,11 @@ model Sortie {
   is_non_podded   Boolean   @default(false)
   is_debrief      Boolean   @default(false)
   is_live_monitor Boolean   @default(false)
+  ac_category     String?   @db.VarChar(30)  // USAF, SISTER_SERVICE, FOREIGN, COMMERCIAL, ADVERSARY_AIR
+  adjudication_status String? @db.VarChar(20) // PENDING, APPROVED, FLAGGED, REJECTED, DUPLICATE
+  adjudication_notes  String?
+  adjudication_by     String? @db.VarChar(50)
+  adjudication_date   DateTime?
   valid           Boolean   @default(false)
   val_by          String?   @db.VarChar(50)
   val_date        DateTime?
