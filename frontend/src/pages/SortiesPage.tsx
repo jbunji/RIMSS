@@ -102,6 +102,15 @@ export default function SortiesPage() {
     remarks: '',
   })
 
+  // Review/Adjudication State
+  const [activeTab, setActiveTab] = useState<'all' | 'pending'>('all')
+  const [pendingSorties, setPendingSorties] = useState<Sortie[]>([])
+  const [pendingTotal, setPendingTotal] = useState(0)
+  const [pendingLoading, setPendingLoading] = useState(false)
+  const [validating, setValidating] = useState<number | null>(null)
+  const [adjudicating, setAdjudicating] = useState<number | null>(null)
+  const [adjudicationNotes, setAdjudicationNotes] = useState('')
+
   // Delete Confirmation Dialog State
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [sortieToDelete, setSortieToDelete] = useState<Sortie | null>(null)
@@ -178,9 +187,74 @@ export default function SortiesPage() {
     }
   }
 
+  // Fetch pending review sorties
+  const fetchPendingReview = async () => {
+    if (!token) return
+    setPendingLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (currentProgramId) params.append('program_id', currentProgramId.toString())
+      const response = await fetch(`/api/sorties/pending-review?${params.toString()}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setPendingSorties(data.sorties || [])
+        setPendingTotal(data.total || 0)
+      }
+    } catch (err) {
+      console.error('Error fetching pending review:', err)
+    } finally {
+      setPendingLoading(false)
+    }
+  }
+
+  // Validate a sortie
+  const handleValidate = async (sortieId: number) => {
+    if (!token) return
+    setValidating(sortieId)
+    try {
+      const response = await fetch(`/api/sorties/${sortieId}/validate`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      })
+      if (response.ok) {
+        fetchPendingReview()
+        fetchSorties()
+      }
+    } catch (err) {
+      console.error('Error validating sortie:', err)
+    } finally {
+      setValidating(null)
+    }
+  }
+
+  // Adjudicate a sortie
+  const handleAdjudicate = async (sortieId: number, status: string) => {
+    if (!token) return
+    setAdjudicating(sortieId)
+    try {
+      const response = await fetch(`/api/sorties/${sortieId}/adjudicate`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, notes: adjudicationNotes }),
+      })
+      if (response.ok) {
+        setAdjudicationNotes('')
+        fetchPendingReview()
+        fetchSorties()
+      }
+    } catch (err) {
+      console.error('Error adjudicating sortie:', err)
+    } finally {
+      setAdjudicating(null)
+    }
+  }
+
   // Fetch sorties on mount and when token/program/filters change
   useEffect(() => {
     fetchSorties()
+    fetchPendingReview()
   }, [token, currentProgramId, searchQuery, startDate, endDate, tailNumberFilter, effectivenessFilter])
 
   // Update filtered sorties whenever sorties change
@@ -946,8 +1020,146 @@ export default function SortiesPage() {
         </div>
       </div>
 
-      {/* Search and Filters */}
-      <div className="bg-white rounded-lg shadow border border-gray-200 p-4">
+      {/* Tabs: All Sorties / Pending Review */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+          <button
+            onClick={() => setActiveTab('all')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'all'
+                ? 'border-primary-500 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            All Sorties ({total})
+          </button>
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'pending'
+                ? 'border-primary-500 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Pending Review
+            {pendingTotal > 0 && (
+              <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                {pendingTotal}
+              </span>
+            )}
+          </button>
+        </nav>
+      </div>
+
+      {/* Pending Review Tab Content */}
+      {activeTab === 'pending' && (
+        <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 bg-yellow-50">
+            <h3 className="text-lg font-medium text-gray-900">Post-Import Review & Correction</h3>
+            <p className="text-sm text-gray-600 mt-1">
+              Review imported sorties for accuracy. Approve, flag for correction, or reject erroneous/duplicate entries.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Serial Number</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sortie Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Effect</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Non-Podded</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Remarks</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {pendingLoading ? (
+                  <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-500">Loading...</td></tr>
+                ) : pendingSorties.length === 0 ? (
+                  <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                    <CheckCircleIcon className="h-8 w-8 text-green-400 mx-auto mb-2" />
+                    All sorties have been reviewed!
+                  </td></tr>
+                ) : (
+                  pendingSorties.map((sortie) => (
+                    <tr key={sortie.sortie_id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{sortie.serno}</td>
+                      <td className="px-4 py-3 text-sm text-gray-500">{formatDate(sortie.sortie_date)}</td>
+                      <td className="px-4 py-3 text-sm">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                          sortie.sortie_effect === 'PART' ? 'bg-yellow-100 text-yellow-800' :
+                          sortie.sortie_effect === 'NEFF' ? 'bg-red-100 text-red-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {sortie.sortie_effect || '-'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {(sortie as any).is_non_podded ? (
+                          <span className="text-blue-600 font-medium">Yes</span>
+                        ) : 'No'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate">{sortie.remarks || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleValidate(sortie.sortie_id)}
+                            disabled={validating === sortie.sortie_id}
+                            className="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-green-100 text-green-800 hover:bg-green-200 disabled:opacity-50"
+                            title="Approve this sortie"
+                          >
+                            {validating === sortie.sortie_id ? '...' : '✓ Approve'}
+                          </button>
+                          <button
+                            onClick={() => handleAdjudicate(sortie.sortie_id, 'FLAGGED')}
+                            disabled={adjudicating === sortie.sortie_id}
+                            className="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-800 hover:bg-yellow-200 disabled:opacity-50"
+                            title="Flag for correction"
+                          >
+                            {adjudicating === sortie.sortie_id ? '...' : '⚑ Flag'}
+                          </button>
+                          <button
+                            onClick={() => handleAdjudicate(sortie.sortie_id, 'DUPLICATE')}
+                            disabled={adjudicating === sortie.sortie_id}
+                            className="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-orange-100 text-orange-800 hover:bg-orange-200 disabled:opacity-50"
+                            title="Mark as duplicate"
+                          >
+                            {adjudicating === sortie.sortie_id ? '...' : '⊘ Duplicate'}
+                          </button>
+                          <button
+                            onClick={() => handleAdjudicate(sortie.sortie_id, 'REJECTED')}
+                            disabled={adjudicating === sortie.sortie_id}
+                            className="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-red-100 text-red-800 hover:bg-red-200 disabled:opacity-50"
+                            title="Reject this sortie"
+                          >
+                            {adjudicating === sortie.sortie_id ? '...' : '✕ Reject'}
+                          </button>
+                          <button
+                            onClick={(e) => openEditModal(sortie, e)}
+                            className="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-gray-100 text-gray-800 hover:bg-gray-200"
+                            title="Edit sortie details"
+                          >
+                            ✎ Edit
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="bg-gray-50 px-6 py-3 border-t border-gray-200">
+            <div className="text-sm text-gray-700">
+              Showing <span className="font-medium">{pendingSorties.length}</span> of{' '}
+              <span className="font-medium">{pendingTotal}</span> pending sorties
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Search and Filters - only show on All tab */}
+      {activeTab === 'all' && <div className="bg-white rounded-lg shadow border border-gray-200 p-4">
         <div className="space-y-4">
           {/* Search bar */}
           <div className="relative">
@@ -1076,10 +1288,10 @@ export default function SortiesPage() {
             </div>
           )}
         </div>
-      </div>
+      </div>}
 
-      {/* Sorties Table */}
-      <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+      {/* Sorties Table - only show on All tab */}
+      {activeTab === 'all' && <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -1200,7 +1412,7 @@ export default function SortiesPage() {
             </div>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* Add Sortie Modal */}
       <Dialog open={isAddModalOpen} onClose={closeAddModal} className="relative z-50">
