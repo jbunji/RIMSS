@@ -17203,9 +17203,10 @@ app.post('/api/sorties/bulk-import', async (req, res) => {
         continue;
       }
 
-      // Find asset by serial number in DB
+      // Find asset by serial number in DB (coerce to string for numeric-only sernos from Excel)
+      const sernoStr = String(sortieData.serno).trim();
       const asset = await prisma.asset.findFirst({
-        where: { serno: sortieData.serno, active: true },
+        where: { serno: sernoStr, active: true },
         include: { part: true },
       });
 
