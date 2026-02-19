@@ -2199,6 +2199,8 @@ app.get('/api/program/:programId/locations', async (req, res) => {
         const name = (loc.display_name || '').trim().toUpperCase()
         // Hide locations with meaningless names (NONE, MULTIPLE, or bare aircraft types with no base info)
         if (name === 'NONE' || name === 'MULTIPLE') return false
+        // Hide bare aircraft type names (F-16, F-15A/B, A-10, B-1B etc.) — no base info, just duplicates
+        if (/^[A-Z]-?\d+[A-Z\/]*$/i.test(name) || name === 'F-15 AIS' || name === 'F-15A/B') return false
         return true
       })
       .sort((a, b) => (a.display_name || '').localeCompare(b.display_name || ''))
