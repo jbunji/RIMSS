@@ -2195,6 +2195,12 @@ app.get('/api/program/:programId/locations', async (req, res) => {
     }
 
     const locations = Array.from(locationMap.values())
+      .filter(loc => {
+        const name = (loc.display_name || '').trim().toUpperCase()
+        // Hide locations with meaningless names (NONE, MULTIPLE, or bare aircraft types with no base info)
+        if (name === 'NONE' || name === 'MULTIPLE') return false
+        return true
+      })
       .sort((a, b) => (a.display_name || '').localeCompare(b.display_name || ''))
 
     console.log(`[PROGRAM-LOCATIONS] Found ${locations.length} locations for program ${program.pgm_cd} (ID: ${programId})`)
