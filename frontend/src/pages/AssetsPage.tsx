@@ -519,7 +519,7 @@ export default function AssetsPage() {
         doc.setFontSize(16)
         doc.setFont('helvetica', 'bold')
         doc.setTextColor(30, 64, 175) // Primary blue
-        doc.text('RIMSS Asset Report', pageWidth / 2, 20, { align: 'center' })
+        doc.text('ACSS Asset Report', pageWidth / 2, 20, { align: 'center' })
 
         doc.setFontSize(11)
         doc.setFont('helvetica', 'normal')
@@ -654,7 +654,7 @@ export default function AssetsPage() {
       // Prepare data rows with CUI header
       const cuiHeaderRow = ['CONTROLLED UNCLASSIFIED INFORMATION (CUI)']
       const blankRow: string[] = []
-      const reportInfoRow1 = [`RIMSS Asset Report - ${program ? `${program.pgm_cd} - ${program.pgm_name}` : 'All Programs'}`]
+      const reportInfoRow1 = [`ACSS Asset Report - ${program ? `${program.pgm_cd} - ${program.pgm_name}` : 'All Programs'}`]
       const reportInfoRow2 = [`Generated: ${zuluTimestamp}`]
       const reportInfoRow3 = [`Total Assets: ${data.pagination.total}`]
       const filterRow = statusFilter || debouncedSearch

@@ -64,7 +64,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     <div className="flex flex-col h-full">
       {/* Logo area for mobile */}
       <div className="flex items-center h-16 px-4 border-b border-gray-200 lg:hidden">
-        <span className="text-primary-800 font-bold text-xl">RIMSS</span>
+        <span className="text-primary-800 font-bold text-xl">ACSS</span>
       </div>
 
       {/* Navigation */}
@@ -114,7 +114,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
 
       {/* Version info */}
       <div className="px-4 py-3 border-t border-gray-200">
-        <p className="text-xs text-gray-500">RIMSS v0.1.0</p>
+        <p className="text-xs text-gray-500">ACSS v1.0</p>
       </div>
     </div>
   )

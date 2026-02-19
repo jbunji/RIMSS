@@ -216,7 +216,7 @@ export default function MaintenanceBacklogReportPage() {
     doc.setFontSize(16)
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(0, 0, 0)
-    doc.text('RIMSS Maintenance Backlog Report', pageWidth / 2, 20, { align: 'center' })
+    doc.text('ACSS Maintenance Backlog Report', pageWidth / 2, 20, { align: 'center' })
 
     // Get filtered events based on current filters
     const filteredEvents = getFilteredEvents()
@@ -316,7 +316,7 @@ export default function MaintenanceBacklogReportPage() {
     // Prepare data rows with CUI header
     const cuiHeaderRow = ['CONTROLLED UNCLASSIFIED INFORMATION (CUI)']
     const blankRow: string[] = []
-    const reportInfoRow1 = ['RIMSS Maintenance Backlog Report']
+    const reportInfoRow1 = ['ACSS Maintenance Backlog Report']
     const reportInfoRow2 = [`Generated: ${zuluTimestamp}`]
     const reportInfoRow3 = [`Total Open Events: ${filteredEvents.length}`]
     const reportInfoRow4 = [`Critical: ${filteredSummary.critical} | Urgent: ${filteredSummary.urgent} | Routine: ${filteredSummary.routine}`]

@@ -272,7 +272,7 @@ export default function PartsOrderedReportPage() {
     doc.setFontSize(16)
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(0, 0, 0)
-    doc.text('RIMSS Parts Ordered Report', pageWidth / 2, 20, { align: 'center' })
+    doc.text('ACSS Parts Ordered Report', pageWidth / 2, 20, { align: 'center' })
 
     // Metadata
     doc.setFontSize(10)
@@ -358,7 +358,7 @@ export default function PartsOrderedReportPage() {
     // Prepare data rows with CUI header
     const cuiHeaderRow = ['CONTROLLED UNCLASSIFIED INFORMATION (CUI)']
     const blankRow: string[] = []
-    const reportInfoRow1 = ['RIMSS Parts Ordered Report']
+    const reportInfoRow1 = ['ACSS Parts Ordered Report']
     const reportInfoRow2 = [`Generated: ${zuluTimestamp}`]
     const reportInfoRow3 = [`Total Orders: ${orders.length}`]
     const reportInfoRow4 = user?.program_cd ? [`Program: ${user.program_cd} - ${user.program_name}`] : []

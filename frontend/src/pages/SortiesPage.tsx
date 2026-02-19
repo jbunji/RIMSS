@@ -812,7 +812,7 @@ export default function SortiesPage() {
     doc.setFontSize(16)
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(0, 0, 0)
-    doc.text('RIMSS Sorties Report', pageWidth / 2, 20, { align: 'center' })
+    doc.text('ACSS Sorties Report', pageWidth / 2, 20, { align: 'center' })
 
     // Metadata
     doc.setFontSize(10)

@@ -159,7 +159,7 @@ export default function InventoryReportPage() {
     doc.setFontSize(16)
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(0, 0, 0)
-    doc.text('RIMSS Inventory Report by System Type', pageWidth / 2, 20, { align: 'center' })
+    doc.text('ACSS Inventory Report by System Type', pageWidth / 2, 20, { align: 'center' })
 
     // Metadata
     doc.setFontSize(10)
@@ -252,7 +252,7 @@ export default function InventoryReportPage() {
     // Prepare data rows with CUI header
     const cuiHeaderRow = ['CONTROLLED UNCLASSIFIED INFORMATION (CUI)']
     const blankRow: string[] = []
-    const reportInfoRow1 = ['RIMSS Inventory Report by System Type']
+    const reportInfoRow1 = ['ACSS Inventory Report by System Type']
     const reportInfoRow2 = [`Generated: ${zuluTimestamp}`]
     const reportInfoRow3 = [`Program: ${reportData.program.pgm_cd} - ${reportData.program.pgm_name}`]
     const reportInfoRow4 = [`Total Assets: ${reportData.total_assets}`]

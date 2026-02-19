@@ -200,7 +200,7 @@ export default function PMIScheduleReportPage() {
     doc.setFontSize(16)
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(0, 0, 0)
-    doc.text('RIMSS PMI Schedule Report', pageWidth / 2, 20, { align: 'center' })
+    doc.text('ACSS PMI Schedule Report', pageWidth / 2, 20, { align: 'center' })
 
     // Metadata
     doc.setFontSize(10)
@@ -301,7 +301,7 @@ export default function PMIScheduleReportPage() {
     // Prepare data rows with CUI header
     const cuiHeaderRow = ['CONTROLLED UNCLASSIFIED INFORMATION (CUI)']
     const blankRow: string[] = []
-    const reportInfoRow1 = ['RIMSS PMI Schedule Report']
+    const reportInfoRow1 = ['ACSS PMI Schedule Report']
     const reportInfoRow2 = [`Generated: ${zuluTimestamp}`]
     const reportInfoRow3 = reportData.program ? [`Program: ${reportData.program.name}`] : []
     const reportInfoRow4 = [`Total PMIs: ${reportData.total}`]

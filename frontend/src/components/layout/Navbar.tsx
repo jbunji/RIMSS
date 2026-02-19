@@ -234,9 +234,9 @@ export default function Navbar({ onMenuClick }: NavbarProps) {
             </button>
 
             <div className="lg:ml-0 ml-4 flex items-center">
-              <span className="text-white font-bold text-xl tracking-tight">RIMSS</span>
+              <span className="text-white font-bold text-xl tracking-tight">ACSS</span>
               <span className="ml-2 text-gray-300 text-sm hidden sm:block">
-                RAMPOD Inventory & Maintenance System Software
+                AirCombat Support Suite
               </span>
             </div>
           </div>

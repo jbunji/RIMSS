@@ -225,7 +225,7 @@ export default function SortieReportPage() {
     doc.setFontSize(16)
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(0, 0, 0)
-    doc.text('RIMSS Sortie Report', pageWidth / 2, 20, { align: 'center' })
+    doc.text('ACSS Sortie Report', pageWidth / 2, 20, { align: 'center' })
 
     // Metadata
     doc.setFontSize(10)
@@ -307,7 +307,7 @@ export default function SortieReportPage() {
     // Prepare data rows with CUI header
     const cuiHeaderRow = ['CONTROLLED UNCLASSIFIED INFORMATION (CUI)']
     const blankRow: string[] = []
-    const reportInfoRow1 = ['RIMSS Sortie Report']
+    const reportInfoRow1 = ['ACSS Sortie Report']
     const reportInfoRow2 = [`Generated: ${zuluTimestamp}`]
     const reportInfoRow3 = user?.program_cd ? [`Program: ${user.program_cd} - ${user.program_name}`] : []
     const reportInfoRow4 = [`Date Range: ${formatDate(summary.date_range.start)} to ${formatDate(summary.date_range.end)}`]

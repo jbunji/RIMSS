@@ -446,7 +446,7 @@ export default function SparesPage() {
     doc.setFontSize(16)
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(0, 0, 0)
-    doc.text('RIMSS Spares Inventory Report', pageWidth / 2, 20, { align: 'center' })
+    doc.text('ACSS Spares Inventory Report', pageWidth / 2, 20, { align: 'center' })
 
     // Metadata
     doc.setFontSize(10)
@@ -583,7 +583,7 @@ export default function SparesPage() {
       // Prepare data rows with CUI header
       const cuiHeaderRow = ['CONTROLLED UNCLASSIFIED INFORMATION (CUI)']
       const blankRow: string[] = []
-      const reportInfoRow1 = ['RIMSS Spares Inventory Report']
+      const reportInfoRow1 = ['ACSS Spares Inventory Report']
       const reportInfoRow2 = [`Generated: ${zuluTimestamp}`]
       const reportInfoRow3 = [`Total Spares: ${allSpares.length}`]
     const reportInfoRow4 = program ? [`Program: ${program.pgm_cd} - ${program.pgm_name}`] : []

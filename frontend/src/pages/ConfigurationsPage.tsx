@@ -145,7 +145,7 @@ const getSysTypeDisplay = (sysType: string | null): { code: string; description:
   return { code: sysType, description: sysType }
 }
 
-// System category tab definitions - matching legacy RIMSS system categories
+// System category tab definitions - matching legacy ACSS system categories
 // These are broader categories that group multiple sys_type values:
 // - AIRBORNE: POD, IM, RAP, PLT (airborne platforms and pod systems)
 // - ECU: Electronic Control Units
@@ -466,7 +466,7 @@ export default function ConfigurationsPage() {
       doc.setFontSize(16)
       doc.setFont('helvetica', 'bold')
       doc.setTextColor(30, 64, 175) // Primary blue
-      doc.text('RIMSS Configuration Report', pageWidth / 2, 20, { align: 'center' })
+      doc.text('ACSS Configuration Report', pageWidth / 2, 20, { align: 'center' })
 
       doc.setFontSize(11)
       doc.setFont('helvetica', 'normal')
@@ -571,7 +571,7 @@ export default function ConfigurationsPage() {
     // Prepare data rows with CUI header
     const cuiHeaderRow = ['CONTROLLED UNCLASSIFIED INFORMATION (CUI)']
     const blankRow: string[] = []
-    const reportInfoRow1 = [`RIMSS Configuration Report - ${program ? `${program.pgm_cd} - ${program.pgm_name}` : 'All Programs'}`]
+    const reportInfoRow1 = [`ACSS Configuration Report - ${program ? `${program.pgm_cd} - ${program.pgm_name}` : 'All Programs'}`]
     const reportInfoRow2 = [`Generated: ${zuluTimestamp}`]
     const reportInfoRow3 = [`Total Configurations: ${pagination.total}`]
     const filterRow = typeFilter || sysTypeFilter || debouncedSearch
@@ -968,7 +968,7 @@ export default function ConfigurationsPage() {
         </div>
       )}
 
-      {/* System Category Tabs - like legacy RIMSS AIRBORNE/ECU/GROUND/SUPPORT EQUIPMENT tabs */}
+      {/* System Category Tabs - like legacy ACSS AIRBORNE/ECU/GROUND/SUPPORT EQUIPMENT tabs */}
       <div className="bg-white shadow rounded-lg">
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-6 px-4" aria-label="System Category Tabs">

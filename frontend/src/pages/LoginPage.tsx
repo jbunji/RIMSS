@@ -81,9 +81,9 @@ export default function LoginPage() {
         <div className="max-w-md w-full space-y-8">
           {/* Logo/Title Section */}
           <div className="text-center">
-            <h1 className="text-3xl font-bold text-primary-800">RIMSS</h1>
+            <h1 className="text-3xl font-bold text-primary-800">ACSS</h1>
             <p className="mt-2 text-sm text-gray-600">
-              RAMPOD Inventory & Maintenance System Software
+              AirCombat Support Suite
             </p>
             <p className="text-xs text-gray-500 mt-1">
               Military Aviation Maintenance Tracking

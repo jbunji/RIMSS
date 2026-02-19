@@ -1383,7 +1383,7 @@ export default function MaintenancePage() {
       doc.setFontSize(16)
       doc.setFont('helvetica', 'bold')
       doc.setTextColor(30, 64, 175) // Primary blue
-      doc.text('RIMSS Maintenance Events Report', pageWidth / 2, 20, { align: 'center' })
+      doc.text('ACSS Maintenance Events Report', pageWidth / 2, 20, { align: 'center' })
 
       doc.setFontSize(11)
       doc.setFont('helvetica', 'normal')
@@ -1512,7 +1512,7 @@ export default function MaintenancePage() {
     // Prepare data rows with CUI header
     const cuiHeaderRow = ['CONTROLLED UNCLASSIFIED INFORMATION (CUI)']
     const blankRow: string[] = []
-    const reportInfoRow1 = [`RIMSS Maintenance Events Report - ${program ? `${program.pgm_cd} - ${program.pgm_name}` : 'All Programs'}`]
+    const reportInfoRow1 = [`ACSS Maintenance Events Report - ${program ? `${program.pgm_cd} - ${program.pgm_name}` : 'All Programs'}`]
     const reportInfoRow2 = [`Generated: ${zuluTimestamp}`]
     const reportInfoRow3 = [`Status: ${activeTab === 0 ? 'Open Events (Backlog)' : 'Closed Events (History)'}`]
     const reportInfoRow4 = [`Total Events: ${pagination.total}`]
@@ -1690,7 +1690,7 @@ export default function MaintenancePage() {
       doc.setFontSize(16)
       doc.setFont('helvetica', 'bold')
       doc.setTextColor(30, 64, 175) // Primary blue
-      doc.text('RIMSS PMI Schedule Report', pageWidth / 2, 20, { align: 'center' })
+      doc.text('ACSS PMI Schedule Report', pageWidth / 2, 20, { align: 'center' })
 
       doc.setFontSize(11)
       doc.setFont('helvetica', 'normal')
@@ -1870,7 +1870,7 @@ export default function MaintenancePage() {
     // Prepare data rows with CUI header
     const cuiHeaderRow = ['CONTROLLED UNCLASSIFIED INFORMATION (CUI)']
     const blankRow: string[] = []
-    const reportInfoRow1 = [`RIMSS PMI Schedule Report - ${program ? `${program.pgm_cd} - ${program.pgm_name}` : 'All Programs'}`]
+    const reportInfoRow1 = [`ACSS PMI Schedule Report - ${program ? `${program.pgm_cd} - ${program.pgm_name}` : 'All Programs'}`]
     const reportInfoRow2 = [`Generated: ${zuluTimestamp}`]
     const reportInfoRow3 = [`Total PMI Records: ${pmiRecords.length}`]
 
@@ -2051,7 +2051,7 @@ export default function MaintenancePage() {
       doc.setFontSize(16)
       doc.setFont('helvetica', 'bold')
       doc.setTextColor(30, 64, 175) // Primary blue
-      doc.text('RIMSS TCTO Report', pageWidth / 2, 20, { align: 'center' })
+      doc.text('ACSS TCTO Report', pageWidth / 2, 20, { align: 'center' })
 
       doc.setFontSize(11)
       doc.setFont('helvetica', 'normal')
@@ -2239,7 +2239,7 @@ export default function MaintenancePage() {
     // Prepare data rows with CUI header
     const cuiHeaderRow = ['CONTROLLED UNCLASSIFIED INFORMATION (CUI)']
     const blankRow: string[] = []
-    const reportInfoRow1 = [`RIMSS TCTO Report - ${program ? `${program.pgm_cd} - ${program.pgm_name}` : 'All Programs'}`]
+    const reportInfoRow1 = [`ACSS TCTO Report - ${program ? `${program.pgm_cd} - ${program.pgm_name}` : 'All Programs'}`]
     const reportInfoRow2 = [`Generated: ${zuluTimestamp}`]
     const reportInfoRow3 = [`Total TCTO Records: ${tctoRecords.length}`]
 
